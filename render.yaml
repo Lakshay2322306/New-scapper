@@ -1,9 +1,15 @@
+version: 1
 services:
   - type: web
     name: telegram-bot
     env: python
-    buildCommand: ""
+    buildCommand: ""  # Specify build command if needed, e.g., `pip install -r requirements.txt`
     startCommand: "python bot.py"
     envVars:
       - key: BOT_TOKEN
         sync: false
+      - key: OTHER_ENV_VAR  # Add other environment variables here
+        sync: false
+    # Optionally configure other settings like port, regions, etc.
+    # port: 8080  # Uncomment if your app listens on a specific port
+    # regions: ["us"]  # Define regions if needed
