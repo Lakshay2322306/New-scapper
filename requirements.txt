@@ -1,0 +1,2 @@
+pyTelegramBotAPI==4.5.1  # For interacting with Telegram API
+requests==2.31.0         # To handle HTTP requests
