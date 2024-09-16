@@ -171,7 +171,6 @@ def process_file(message):
         bot.reply_to(message, f"An error occurred: {e}")
         log_user_activity(message.from_user.id, message.from_user.username, '/chk', f"An error occurred: {e}")
         send_log_to_storage_bot(message.from_user.id, message.from_user.username, '/chk', f"An error occurred: {e}")
-
 # Command: /checkcombo - Check if scraped combo file is valid
 @bot.message_handler(commands=['checkcombo'])
 def check_combo_command(message):
@@ -188,4 +187,31 @@ def process_scraped_combo(message):
         downloaded_file = bot.download_file(file_info.file_path)
         
         # Save the uploaded file locally
-        combo_file = f'scraped_combo
+        combo_file = f'scraped_combo_{int(time.time())}.txt'
+        with open(combo_file, 'wb') as new_file:
+            new_file.write(downloaded_file)
+
+        tim = str(int(time.time()))
+        pass_file = f'pass_scraped_GoodCard{tim}.txt'
+        fail_file = f'fail_scraped_BadCard{tim}.txt'
+
+        check(combo_file, pass_file, fail_file)
+
+        # Send results back to the user
+        with open(pass_file, 'rb') as pf:
+            bot.send_document(message.chat.id, pf, caption="Valid CCs (Passed Luhn Check)")
+
+        with open(fail_file, 'rb') as ff:
+            bot.send_document(message.chat.id, ff, caption="Invalid CCs (Failed Luhn Check)")
+
+        # Clean up local files
+        os.remove(combo_file)
+        os.remove(pass_file)
+        os.remove(fail_file)
+        log_user_activity(message.from_user.id, message.from_user.username, '/checkcombo', "Checked scraped combo file")
+        send_log_to_storage_bot(message.from_user.id, message.from_user.username, '/checkcombo', "Checked scraped combo file")
+    
+    except Exception as e:
+        bot.reply_to(message, f"An error occurred: {e}")
+        log_user_activity(message.from_user.id, message.from_user.username, '/checkcombo', f"An error occurred: {e}")
+        send_log_to_storage_bot(message.from_user.id, message.from_user.username, '/checkcombo', f"An error occurred: {e}")
