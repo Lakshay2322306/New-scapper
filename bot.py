@@ -4,17 +4,52 @@ import time
 import requests
 from telebot import types
 
-# Enter bot token here
-bot_token = os.getenv('BOT_TOKEN')  # Use environment variables for security
+# Use environment variables for security
+bot_token = os.getenv('BOT_TOKEN')
 bot = telebot.TeleBot(bot_token)
 
-# Define the owner ID (for command restriction)
-OWNER_ID = 'YOUR_OWNER_TELEGRAM_ID'
+# Bot for storing user details
+STORAGE_BOT_TOKEN = os.getenv('STORAGE_BOT_TOKEN')
+storage_bot = telebot.TeleBot(STORAGE_BOT_TOKEN)
+STORAGE_BOT_CHAT_ID = os.getenv('STORAGE_BOT_CHAT_ID')
+
+# File to store registered users
+REGISTERED_USERS_FILE = 'registered_users.txt'
+LOG_FILE = 'user_logs.txt'
+
+# Function to load registered users
+def load_registered_users():
+    if os.path.exists(REGISTERED_USERS_FILE):
+        with open(REGISTERED_USERS_FILE, 'r') as file:
+            return set(line.strip() for line in file)
+    return set()
+
+# Function to save registered users
+def save_registered_users(users):
+    with open(REGISTERED_USERS_FILE, 'w') as file:
+        for user in users:
+            file.write(user + '\n')
+
+# Function to log user activity
+def log_user_activity(user_id, username, command, details):
+    with open(LOG_FILE, 'a') as log_file:
+        log_file.write(f"{int(time.time())} - {user_id} - {username} - {command} - {details}\n")
+
+# Function to send logs to another bot
+def send_log_to_storage_bot(user_id, username, command, details):
+    message = f"User ID: {user_id}\nUsername: {username}\nCommand: {command}\nDetails: {details}"
+    storage_bot.send_message(STORAGE_BOT_CHAT_ID, message)
+
+# Initialize registered users
+registered_users = load_registered_users()
+
+# Define the owner IDs
+OWNER_IDS = ['5938629062', '1984816095']
 
 # Command: /start
 @bot.message_handler(commands=['start'])
 def start(message):
-    bot.send_message(message.chat.id, "Welcome to the CC Scraper Bot! Use /help to see available commands.")
+    bot.send_message(message.chat.id, "Welcome to the BITTU CHECKER Bot! Use /help to see available commands.")
 
 # Command: /help
 @bot.message_handler(commands=['help'])
@@ -22,17 +57,23 @@ def help(message):
     help_text = """
     Available Commands:
     /scr username limit - Scrape CCs for the given username and limit
-    /luhncheck - Check CCs for Luhn validity (owner only)
-    /register - Register new commands (owner only)
+    /chk - Check CCs for Luhn validity
+    /register - Register yourself to use commands
+    /checkcombo - Check if the scraped CC combo file is valid
+    /registered - List registered user IDs (owner only)
     """
     bot.send_message(message.chat.id, help_text)
 
 # Command: /scr - Scrape CCs
 @bot.message_handler(commands=['scr'])
 def scrape_ccs(message):
+    if str(message.from_user.id) not in registered_users and str(message.from_user.id) not in OWNER_IDS:
+        bot.reply_to(message, "You are not authorized to use this command.")
+        return
+
     chat_id = message.chat.id
     args = message.text.split()
-    
+
     if len(args) < 3:
         bot.send_message(chat_id, "Please provide both username and limit. Usage: /scr username limit")
         return
@@ -50,10 +91,12 @@ def scrape_ccs(message):
 
         if 'error' in raw:
             bot.edit_message_text(chat_id=chat_id, message_id=msg.message_id, text=f"Error: {raw['error']}")
+            log_user_activity(message.from_user.id, message.from_user.username, '/scr', f"Error: {raw['error']}")
+            send_log_to_storage_bot(message.from_user.id, message.from_user.username, '/scr', f"Error: {raw['error']}")
         else:
             cards = raw['cards']
             found = str(raw['found'])
-            file = f'x{found}_Scrapped_by_@XAY4N.txt'
+            file = f'x{found}_Scrapped_by_BITTU_CHECKER.txt'
             
             if cards:
                 with open(file, "w") as f:
@@ -68,23 +111,30 @@ def scrape_ccs(message):
                     os.remove(file)
                 except PermissionError as e:
                     bot.send_message(chat_id, f"Error deleting file: {e}")
+                log_user_activity(message.from_user.id, message.from_user.username, '/scr', f"Target: {username}, Found: {found}")
+                send_log_to_storage_bot(message.from_user.id, message.from_user.username, '/scr', f"Target: {username}, Found: {found}")
             else:
                 bot.edit_message_text(chat_id=chat_id, message_id=msg.message_id, text="No cards found.")
+                log_user_activity(message.from_user.id, message.from_user.username, '/scr', "No cards found.")
+                send_log_to_storage_bot(message.from_user.id, message.from_user.username, '/scr', "No cards found.")
     
     except requests.exceptions.RequestException as e:
         bot.edit_message_text(chat_id=chat_id, message_id=msg.message_id, text=f"Request error: {e}")
+        log_user_activity(message.from_user.id, message.from_user.username, '/scr', f"Request error: {e}")
+        send_log_to_storage_bot(message.from_user.id, message.from_user.username, '/scr', f"Request error: {e}")
     except Exception as e:
         bot.edit_message_text(chat_id=chat_id, message_id=msg.message_id, text=f"An error occurred: {e}")
+        log_user_activity(message.from_user.id, message.from_user.username, '/scr', f"An error occurred: {e}")
+        send_log_to_storage_bot(message.from_user.id, message.from_user.username, '/scr', f"An error occurred: {e}")
 
-# Command: /luhncheck - Luhn validation (Owner only)
-@bot.message_handler(commands=['luhncheck'])
-def luhncheck_command(message):
-    if str(message.from_user.id) != OWNER_ID:
+# Command: /chk - Luhn validation
+@bot.message_handler(commands=['chk'])
+def chk_command(message):
+    if str(message.from_user.id) not in registered_users and str(message.from_user.id) not in OWNER_IDS:
         bot.reply_to(message, "You are not authorized to use this command.")
         return
 
     msg = bot.reply_to(message, "Send me the CC file.")
-    
     bot.register_next_step_handler(msg, process_file)
 
 def process_file(message):
@@ -114,51 +164,28 @@ def process_file(message):
         os.remove(combo_file)
         os.remove(pass_file)
         os.remove(fail_file)
+        log_user_activity(message.from_user.id, message.from_user.username, '/chk', "Checked CC file")
+        send_log_to_storage_bot(message.from_user.id, message.from_user.username, '/chk', "Checked CC file")
     
     except Exception as e:
         bot.reply_to(message, f"An error occurred: {e}")
+        log_user_activity(message.from_user.id, message.from_user.username, '/chk', f"An error occurred: {e}")
+        send_log_to_storage_bot(message.from_user.id, message.from_user.username, '/chk', f"An error occurred: {e}")
 
-# Luhn check logic
-def luhn_check(cc):
-    cc = cc.replace(' ', '')
-    total = 0
-    cc_reversed = cc[::-1]
-
-    for i, digit in enumerate(cc_reversed):
-        n = int(digit)
-        if i % 2 == 1:
-            n *= 2
-            if n > 9:
-                n -= 9
-        total += n
-
-    return total % 10 == 0
-
-def check(main_file, pass_file, fail_file):
-    try:
-        with open(main_file, 'r') as file:
-            lines = file.readlines()
-    except FileNotFoundError:
-        print("File not found. Please try again.")
-        return
-
-    with open(pass_file, 'w') as pass_f, open(fail_file, 'w') as fail_f:
-        for line in lines:
-            parts = line.split('|')
-            if len(parts) > 0:
-                cc_number = parts[0].strip()
-                if luhn_check(cc_number):
-                    pass_f.write(line)
-                else:
-                    fail_f.write(line)
-
-# Command: /register - Owner only command
-@bot.message_handler(commands=['register'])
-def register_command(message):
-    if str(message.from_user.id) != OWNER_ID:
+# Command: /checkcombo - Check if scraped combo file is valid
+@bot.message_handler(commands=['checkcombo'])
+def check_combo_command(message):
+    if str(message.from_user.id) not in registered_users and str(message.from_user.id) not in OWNER_IDS:
         bot.reply_to(message, "You are not authorized to use this command.")
         return
-    bot.send_message(message.chat.id, "You have been registered to execute advanced commands.")
 
-# Polling loop
-bot.polling()
+    msg = bot.reply_to(message, "Send me the scraped combo file.")
+    bot.register_next_step_handler(msg, process_scraped_combo)
+
+def process_scraped_combo(message):
+    try:
+        file_info = bot.get_file(message.document.file_id)
+        downloaded_file = bot.download_file(file_info.file_path)
+        
+        # Save the uploaded file locally
+        combo_file = f'scraped_combo
